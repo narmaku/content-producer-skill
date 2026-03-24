@@ -24,8 +24,12 @@ ffmpeg encoding. Choose a content type template to match your topic, then genera
    - `references/icons.md` — open-source icon sets and setup instructions
    - `references/media-assets.md` — how to embed user-provided images and video clips
    - `references/music.md` — dynamic music generation system
+   - `references/branding-guide.md` — how to set up branded video production
 
-2. **Check for user-provided assets**: If the user provides images, screenshots, or screen
+2. **Check for a brand config**: If a `brand/brand.md` file exists, read it and apply
+   the brand colors, fonts, logo, icons, and design rules to the generated video.
+
+4. **Check for user-provided assets**: If the user provides images, screenshots, or screen
    recordings (in an `assets/` directory or as file paths), examine them before generating:
    - **Images**: Read them directly (Claude is multimodal)
    - **Video clips**: Extract sample frames via ffmpeg, read those to understand the content
@@ -33,11 +37,11 @@ ffmpeg encoding. Choose a content type template to match your topic, then genera
    - Auto-map each asset to the most appropriate slide
    - See `references/media-assets.md` for the full embedding system
 
-3. **Ask the user** two things:
+5. **Ask the user** (if not already clear from their request):
    - **What content type?** (or infer from their request)
-   - **What style/brand?** Custom colors and fonts, or use the generic dark theme
+   - **What style/brand?** Custom colors and fonts, or use the generic dark theme (skip if `brand/brand.md` exists)
 
-3. **Read the content type template** based on their choice:
+6. **Read the content type template** based on their choice:
 
 | Content Type | Template | Best For |
 |-------------|----------|----------|
@@ -383,7 +387,15 @@ draw.text((x + 12, y + 5), tag, font=f_tag, fill=GRAY_40)
 
 ## Custom Branding
 
-Override these values to apply any brand:
+For a complete guide on setting up branded video production — including brand directories,
+config files, fonts, logos, and icons — see `references/branding-guide.md`.
+
+The quick version: create a `brand/` directory with a `brand.md` config file and your
+logo. The skill reads it automatically and applies your brand to every video.
+
+### Generated Script Variables
+
+Override these values in the generated script to apply any brand:
 
 ```python
 # === BRAND CONFIGURATION ===
