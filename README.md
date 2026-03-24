@@ -87,6 +87,7 @@ video-skill/
     icons.md                  # Open-source icon libraries guide
     music.md                  # Dynamic music generation system (7 mood presets)
     media-assets.md           # Embedding images and screen recordings
+    branding-guide.md         # How to set up branded video production
 ```
 
 ## How It Works
@@ -149,14 +150,32 @@ Create a demo video about our new dashboard. I have these assets:
 
 ## Custom Branding
 
-All content types support the same brand customization:
+Produce on-brand videos by creating a `brand/` directory with your organization's assets:
 
-- **Colors**: Override accent colors with your brand palette (6 presets included, or define your own)
-- **Fonts**: Point to your own TTF/OTF font files (4 open-source stacks included)
-- **Logo**: Provide a PNG logo path for title/closing slides
-- **Icons**: Use any SVG icon set (5 libraries documented)
+```
+brand/
+  brand.md              # Brand config: colors, fonts, rules, voice
+  logo.png              # Your logo (transparent PNG)
+  fonts/                # Custom font files (optional)
+  icons/                # Custom icon set (optional)
+```
 
-See the "Custom Branding" section in `SKILL.md` for details.
+Just create `brand/brand.md` with your colors and logo, and every generated video
+will automatically use your brand. Example:
+
+```
+Create a demo video about our new API gateway
+```
+
+Claude reads `brand/brand.md`, applies your brand colors, fonts, and logo — no
+extra flags or configuration needed.
+
+The skill also works alongside existing brand skills. If your organization already has
+brand reference files (color palettes, typography guides), you can copy or reference
+them from your `brand/` directory.
+
+See `references/branding-guide.md` for the full setup guide, configuration reference,
+and examples.
 
 ## License
 
