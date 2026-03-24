@@ -112,6 +112,88 @@ You can also be explicit:
 Create a demo video about our API gateway using the brand config in brand/
 ```
 
+## Color Dominance Rules (When Branded)
+
+When a `brand/brand.md` is active, the templates' default multi-color behavior changes.
+Branded videos must feel cohesive and on-brand — not like a generic rainbow palette.
+
+### Rule 1: Primary brand color on every slide
+
+The brand's Primary color must have a **visible, intentional presence** on every slide —
+not just the progress bar. At minimum, one of: accent bar, glow, headline highlight,
+icon color, or card border.
+
+### Rule 2: Primary color dominates lists and cards
+
+When a template calls for "colored accent bars" on feature cards, benefit cards, or
+similar list layouts, **use the Primary brand color for all cards by default**. Do NOT
+assign a different color to each card unless the brand config explicitly defines a
+multi-color card strategy.
+
+**Unbranded (default):**
+```python
+# Each card gets a different color for visual variety
+features = [
+    ("CLI Tool",    ACCENT),
+    ("Security",    TEAL),
+    ("Automation",  PURPLE),
+    ("Monitoring",  BLUE),
+]
+```
+
+**Branded:**
+```python
+# All cards use the primary brand color
+features = [
+    ("CLI Tool",    ACCENT),
+    ("Security",    ACCENT),
+    ("Automation",  ACCENT),
+    ("Monitoring",  ACCENT),
+]
+```
+
+To avoid visual monotony with same-color cards, vary the **icon** per card (different
+icon shapes provide enough differentiation) and use subtle differences in the glow
+position or animation delay.
+
+### Rule 3: Secondary colors only for semantic meaning
+
+The brand's Secondary color (mapped to `TEAL`) should only appear on slides where its
+**semantic meaning** applies — specifically "solution" or "how it works" content. It
+should not be used as decoration on unrelated slides.
+
+| Color Role | When to Use | When NOT to Use |
+|------------|-------------|-----------------|
+| Primary | Every slide — accent bars, glows, highlights | Never for negative states (unless brand allows) |
+| Secondary | "Solution" slides, "how it works" diagrams | Feature cards, benefit lists, random decoration |
+| Success | Checkmarks, passing states, approvals | Card accent bars |
+| Warning | Caution states, attention callouts | Card accent bars |
+| Expressive | Only if brand explicitly calls for it | Default card/list coloring |
+
+### Rule 4: Solution slide uses Secondary, but Primary must also appear
+
+On "solution" or "how it works" slides, the Secondary (TEAL) color is appropriate for
+the solution content itself. But the Primary brand color must still be visually present
+on that slide — for example, in the section label, accent bar, or progress indicator
+(beyond just the progress bar).
+
+### Rule 5: How It Works flow diagrams
+
+For flow diagrams with multiple steps, use the **Primary color** for all step boxes.
+Differentiate steps through icons, numbering, or labels — not through color. The only
+exception is the final "result" step, which may use the Secondary color to signal
+"solution reached."
+
+**Unbranded:**
+```python
+steps = [("Input", ACCENT), ("Process", TEAL), ("AI", PURPLE), ("Output", GREEN)]
+```
+
+**Branded:**
+```python
+steps = [("Input", ACCENT), ("Process", ACCENT), ("AI", ACCENT), ("Output", TEAL)]
+```
+
 ## Brand Configuration Reference
 
 ### Colors

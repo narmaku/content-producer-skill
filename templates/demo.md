@@ -56,16 +56,18 @@ Total duration: ~74 seconds (~1:14)
 - Optional stat callout (large number + label)
 
 ### Solution Slide
-- Shield or lightbulb icon in TEAL
+- Shield or lightbulb icon in TEAL (Secondary color)
 - Two-line headline: context in GRAY_30, key concept in TEAL
 - Info card with the core value proposition
 - Bold emphasis on the key differentiator
+- **Branded**: Primary brand color must still appear (e.g., in the emphasis line)
 
 ### How It Works Slide
 - Flow diagram with animated boxes and arrow connectors
 - 3-5 steps appearing sequentially with slide-in animation
 - Color-coded result panels: GREEN for success, ORANGE for rejection
 - Caption explaining the flow
+- **Branded**: Use Primary color for all step boxes; only the final "result" step may use Secondary (TEAL)
 
 ### Demo Slide
 - "LIVE DEMO" label in ACCENT mono
@@ -77,16 +79,19 @@ Total duration: ~74 seconds (~1:14)
 
 ### Features Slide
 - "KEY FEATURES" label in ACCENT mono
-- 3-4 cards with colored left accent bars
+- 3-4 cards with left accent bars
 - Each card: icon (64px) + bold title + one-line description
 - Staggered reveal: 0.8s between cards
 - Optional summary callout on the right
+- **Unbranded**: Each card may use a different semantic color for variety
+- **Branded**: All cards use the Primary brand color; differentiate with icons only (see `references/branding-guide.md` Color Dominance Rules)
 
 ### Benefits Slide
 - "WHY IT MATTERS" headline
 - 3 benefit cards sliding in from left with stagger
 - Each: icon + bold title + one-line description
 - Optional accent-bordered summary box
+- **Branded**: All cards use Primary brand color (same rule as Features Slide)
 
 ### Closing Slide
 - Large centered icon (180px) in ACCENT with breathing glow

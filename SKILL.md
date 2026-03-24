@@ -393,6 +393,11 @@ config files, fonts, logos, and icons — see `references/branding-guide.md`.
 The quick version: create a `brand/` directory with a `brand.md` config file and your
 logo. The skill reads it automatically and applies your brand to every video.
 
+**Important — Color Dominance**: When a brand is active, the Primary brand color must
+dominate. Do NOT assign rainbow colors to feature/benefit cards. Use the Primary color
+for all cards and differentiate with icons instead. See the "Color Dominance Rules"
+section in `references/branding-guide.md` for the full rules.
+
 ### Generated Script Variables
 
 Override these values in the generated script to apply any brand:

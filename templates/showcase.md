@@ -101,8 +101,10 @@ slides = [
 - "HIGHLIGHTS" label in ACCENT mono
 - Gallery of 3-4 feature/moment cards:
   - Icon (64px) + bold title + one-line description
-  - Colored left accent bars (vary: ACCENT, TEAL, PURPLE, GREEN)
+  - Left accent bars for visual structure
 - Staggered reveal (0.8s between cards)
+- **Unbranded**: Vary card accent colors (ACCENT, TEAL, PURPLE, GREEN) for variety
+- **Branded**: All cards use Primary brand color (see `references/branding-guide.md` Color Dominance Rules)
 - This is the richest visual slide — take time (10s)
 
 ### Lessons Slide
