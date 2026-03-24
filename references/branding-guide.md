@@ -285,12 +285,20 @@ different set in `brand.md`:
 Use Tabler Icons (already cloned at tabler-icons/)
 ```
 
-### Music Mood
+### Music
 
-Override the default music mood per content type:
+Background music is **always included** by default. The brand config overrides the
+content type template's default mood. The music is generated procedurally using the
+implementation from `references/music.md`.
+
+If the brand does not specify music settings, the content type template's defaults apply
+(e.g., tutorial → `calm`, demo → `upbeat`). The user can also request a specific mood
+or BPM in their prompt, which takes priority over both the brand and template defaults.
 
 ```markdown
 ## Music
+- Default mood: upbeat
+- BPM: 112
 - Demo videos: upbeat (BPM 112)
 - Explainers: ambient (BPM 94)
 - Promos: energetic (BPM 126)
@@ -298,9 +306,13 @@ Override the default music mood per content type:
 - Showcases: cinematic (BPM 104)
 ```
 
-### TTS Voice
+**Priority order**: user request > brand config > content type template default.
 
-Specify a preferred voice for narration:
+### Voice
+
+Voice narration is **always included** by default. The brand config specifies the preferred
+voice and speed. If the brand does not specify a voice, the default `af_heart` is used.
+The user can also request a specific voice in their prompt, which takes priority.
 
 ```markdown
 ## Voice
@@ -316,6 +328,8 @@ Or provide a custom voice tensor for voice cloning:
 - Custom voice: brand/voice.pt
 - Speed: 1.0
 ```
+
+**Priority order**: user request > brand config > default (`af_heart`).
 
 ## Combining with Existing Brand Skills
 

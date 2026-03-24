@@ -27,9 +27,10 @@ ffmpeg encoding. Choose a content type template to match your topic, then genera
    - `references/branding-guide.md` — how to set up branded video production
 
 2. **Check for a brand config**: If a `brand/brand.md` file exists, read it and apply
-   the brand colors, fonts, logo, icons, and design rules to the generated video.
+   the brand colors, fonts, logo, icons, music settings, voice, and design rules to the
+   generated video.
 
-4. **Check for user-provided assets**: If the user provides images, screenshots, or screen
+3. **Check for user-provided assets**: If the user provides images, screenshots, or screen
    recordings (in an `assets/` directory or as file paths), examine them before generating:
    - **Images**: Read them directly (Claude is multimodal)
    - **Video clips**: Extract sample frames via ffmpeg, read those to understand the content
@@ -37,11 +38,11 @@ ffmpeg encoding. Choose a content type template to match your topic, then genera
    - Auto-map each asset to the most appropriate slide
    - See `references/media-assets.md` for the full embedding system
 
-5. **Ask the user** (if not already clear from their request):
+4. **Ask the user** (if not already clear from their request):
    - **What content type?** (or infer from their request)
    - **What style/brand?** Custom colors and fonts, or use the generic dark theme (skip if `brand/brand.md` exists)
 
-6. **Read the content type template** based on their choice:
+5. **Read the content type template** based on their choice:
 
 | Content Type | Template | Best For |
 |-------------|----------|----------|
@@ -62,8 +63,8 @@ A Python script (e.g., `make_video.py`) that generates an MP4 video file:
 - Encoded with `libopenh264` codec, `yuv420p` pixel format
 - Animated slides with eased transitions, kinetic typography, and icon reveals
 - Crossfade transitions between slides
-- Optional synthetic background music with 7 mood presets
-- Optional TTS narration via Kokoro (auto-adjusting slide durations)
+- Background music with 7 mood presets (included by default)
+- TTS narration via Kokoro (included by default)
 - Optional embedding of user-provided images and screen recordings
 - Configurable color palette, fonts, and accent colors
 
@@ -75,9 +76,15 @@ A Python script (e.g., `make_video.py`) that generates an MP4 video file:
 - **ffmpeg** installed on the system
   - Fedora: `sudo dnf install ffmpeg-free`
   - Ubuntu: `sudo apt install ffmpeg`
-- **numpy** (optional, for background music)
+- **numpy** (for background music generation)
   - Fedora: `sudo dnf install python3-numpy`
   - Ubuntu: `sudo apt install python3-numpy`
+- **Kokoro TTS** (for voice narration)
+  ```bash
+  pip install kokoro soundfile
+  sudo dnf install espeak-ng        # Fedora
+  sudo apt install espeak-ng        # Ubuntu
+  ```
 - **Fonts**: At least one font stack (see `references/design-system.md`)
   - Fedora: `sudo dnf install inter-fonts jetbrains-mono-fonts`
   - Ubuntu: `sudo apt install fonts-inter fonts-jetbrains-mono`
@@ -388,7 +395,7 @@ draw.text((x + 12, y + 5), tag, font=f_tag, fill=GRAY_40)
 ## Custom Branding
 
 For a complete guide on setting up branded video production — including brand directories,
-config files, fonts, logos, and icons — see `references/branding-guide.md`.
+config files, fonts, logos, icons, music, and voice — see `references/branding-guide.md`.
 
 The quick version: create a `brand/` directory with a `brand.md` config file and your
 logo. The skill reads it automatically and applies your brand to every video.
@@ -478,21 +485,19 @@ clip_idx = max(0, frame - int(delay * FPS))
 embed_video_asset(img, clip_frames, clip_idx, x, y, w, h, style="terminal")
 ```
 
-## Narration with TTS (Optional)
+## Narration with TTS
 
-Add AI-generated voice narration using **Kokoro TTS** — an open-weight, Apache 2.0 licensed
-text-to-speech model with 82M parameters and 54 voices across 8 languages.
+Voice narration is **included by default** in all generated videos using **Kokoro TTS** —
+an open-weight, Apache 2.0 licensed text-to-speech model with 82M parameters and 54 voices
+across 8 languages. On first run, Kokoro downloads model weights from Hugging Face (~300MB).
 
-### Prerequisites
-
-```bash
-pip install kokoro soundfile
-# espeak-ng required as phonemizer backend
-sudo dnf install espeak-ng        # Fedora
-sudo apt install espeak-ng        # Ubuntu
-```
-
-On first run, Kokoro downloads model weights from Hugging Face (~300MB).
+**Defaults and overrides:**
+- Voice narration is generated for every slide unless the user explicitly requests no narration
+  (e.g., "create a video without narration" or "no voice-over")
+- The default voice is `af_heart` (warm female), but the user can request a specific voice
+  (e.g., "use a male voice", "use am_michael") or the brand config may specify one
+- The user can request a specific language (e.g., "narrate in Spanish")
+- If `brand/brand.md` specifies a voice, use that voice instead of the default
 
 ### Architecture
 
@@ -589,11 +594,20 @@ Use any of Kokoro's 54 built-in voices. Some popular ones:
 - `bf_emma` — British female voice
 - `bm_george` — British male voice
 
-## Background Music (Optional)
+## Background Music
 
-The music system dynamically generates different soundscapes based on the content type
-and mood of the video. See `references/music.md` for the full reference with all layer
-implementations, chord progressions, and mood presets.
+Background music is **included by default** in all generated videos. The music system
+dynamically generates different soundscapes based on the content type and mood of the video.
+See `references/music.md` for the full reference with all layer implementations, chord
+progressions, and mood presets.
+
+**Defaults and overrides:**
+- Music is always generated unless the user explicitly requests no music
+  (e.g., "create a video without music" or "no background music")
+- The mood is auto-set by the content type template (e.g., tutorial → `calm`)
+- The user can request a specific mood (e.g., "use lofi music", "make it energetic")
+- If `brand/brand.md` specifies music settings, use those instead of the template defaults
+- The user can request a specific BPM (e.g., "use 120 BPM")
 
 ### Mood Presets
 
@@ -695,7 +709,9 @@ cmd = [
 - [ ] Icons are cached
 - [ ] Callout boxes sized to content
 - [ ] Video is 1920x1080 at 30fps
-- [ ] Music (if included) at 25% volume
+- [ ] Background music included at mood-appropriate volume (see Volume by Mood table)
+- [ ] Voice narration included with narration text for every slide
+- [ ] Audio ducking: music volume reduces during narration
 - [ ] Narrative follows a clear story arc
 
 ## Common Pitfalls
@@ -705,5 +721,7 @@ cmd = [
 3. **Callout boxes too large**: Size to content
 4. **libx264 not available**: Use `libopenh264`
 5. **Icon names wrong**: List the directory, don't guess
-6. **Music too loud**: Keep at 25%
+6. **Music too loud**: Use mood-appropriate volume (see Volume by Mood table)
 7. **Font not found**: Fall back to system default
+8. **Missing music or narration**: Both are included by default — only omit if user explicitly opts out
+9. **Wrong voice**: Check `brand/brand.md` for voice preference, then user request, then default to `af_heart`
