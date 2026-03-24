@@ -2,7 +2,7 @@
 
 A Claude Code skill for generating cinematic, animated MP4 videos — fully generic, brandable, and open source. Supports multiple content types, each with its own narrative structure, slide composition, and music style.
 
-<video src="https://github.com/narmaku/content-producer-skill/releases/download/v1.0.0/content-producer-demo.mp4" controls width="720"></video>
+https://github.com/user-attachments/assets/88ecd7db-c93f-4d1c-9d2d-cc35cf5a6a30
 
 ## What It Does
 
