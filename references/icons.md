@@ -1,7 +1,10 @@
 # Icon Reference for Video Producer
 
 This reference covers how to find, install, and use open-source SVG icon sets with the
-video producer skill. Icons are rasterized via ffmpeg and recolored in Pillow.
+video producer skill. Icons are supersampled at high density via ImageMagick (`magick`),
+LANCZOS-downscaled in Pillow for crisp edges, and recolored. See SKILL.md for why the old
+one-shot `ffmpeg -vf scale` approach is avoided (it upscales from the SVG's tiny intrinsic
+size, producing blurry icons).
 
 ## Recommended Icon Libraries
 
@@ -118,14 +121,29 @@ def load_icon(name, size=96, color=WHITE):
             _icon_cache[key] = img
             return img
 
+    # Supersample at high density via ImageMagick, then LANCZOS-downscale → crisp edges.
+    # Never feed the SVG to ffmpeg at the target size: it rasterizes at the SVG's intrinsic
+    # (often 24x24) size and upscales, producing blurry icons.
+    ss = max(256, size * 4)
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-i", svg_path,
-        "-vf", f"scale={size}:{size}",
-        "-f", "image2pipe", "-vcodec", "png", "-"
+        "magick",
+        "-background", "none",
+        "-density", "1024",
+        svg_path,
+        "-resize", f"{ss}x{ss}",
+        "png:-",
     ]
     result = subprocess.run(cmd, capture_output=True)
-    img = Image.open(BytesIO(result.stdout)).convert("RGBA")
+    if result.returncode != 0 or not result.stdout:
+        # Fallback: ffmpeg high-density raster (still supersampled, not a one-shot scale)
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", svg_path,
+            "-vf", f"scale={ss}:{ss}:flags=lanczos",
+            "-f", "image2pipe", "-vcodec", "png", "-",
+        ]
+        result = subprocess.run(cmd, capture_output=True)
+    img = Image.open(BytesIO(result.stdout)).convert("RGBA").resize((size, size), Image.LANCZOS)
 
     # Recolor all non-transparent pixels
     pixels = img.load()
