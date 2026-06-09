@@ -57,14 +57,27 @@ and music style — all producing MP4 video output.
 
 ## What This Skill Produces
 
-A Python script (e.g., `make_video.py`) that generates an MP4 video file:
+A Python script (e.g., `make_video.py`) that generates **three default artifacts** for every
+video project — all produced in the same run unless the user explicitly opts out:
+
+1. **MP4 video** (`<name>.mp4`) — 1920x1080 @ 30fps, H.264, with music + narration mixed in
+2. **PNG slide exports** (`slides_png/slide_NN_<name>.png`) — one settled still per slide
+3. **PDF deck** (`<name>.pdf`) — all slide stills combined into a single document
+
+The generated script MUST expose a CLI supporting `video`, `narrated`, `pdf`, and `all`
+modes, and `all` MUST be the default when no mode is passed (see "PDF + PNG Export" below
+for the reference implementation).
+
+Video characteristics:
 - 1920x1080 resolution at 30fps
 - Rendered frame-by-frame using Pillow (PIL), piped as raw RGB bytes to ffmpeg
-- Encoded with `libopenh264` codec, `yuv420p` pixel format
+- Encoded with H.264 (`libx264` preferred; fall back to `libopenh264`), `yuv420p` pixel format
 - Animated slides with eased transitions, kinetic typography, and icon reveals
 - Crossfade transitions between slides
 - Background music with 7 mood presets (included by default)
 - TTS narration via Kokoro (included by default)
+- High-quality supersampled SVG icons via ImageMagick (`magick` required — never upscale at
+  target size)
 - Optional embedding of user-provided images and screen recordings
 - Configurable color palette, fonts, and accent colors
 
@@ -117,7 +130,9 @@ cmd = [
     "-pix_fmt", "rgb24",
     "-r", "30",
     "-i", "-",
-    "-c:v", "libopenh264",
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "20",
     "-pix_fmt", "yuv420p",
     OUTPUT,
 ]
@@ -126,7 +141,9 @@ proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 proc.stdin.write(img.tobytes())
 ```
 
-**Note**: Use `libopenh264` — `libx264` may not be available on all systems.
+**Note**: Prefer `libx264` (broadly available, high quality at `-crf 20`). If it is missing,
+fall back to `libopenh264` (no `-preset`/`-crf` flags). Detect with `ffmpeg -encoders` at
+script startup or wrap the Popen in a try/except and retry with the fallback encoder.
 
 ## Design System
 
@@ -207,6 +224,14 @@ ICON_DIR = os.path.join(SCRIPT_DIR, "icons")
 _icon_cache = {}
 
 def load_icon(name, size=96, color=WHITE):
+    """High-quality SVG → raster icon loader (REQUIRED for all videos).
+
+    Rasterizes the SVG at a high density via ImageMagick (`magick`), then
+    LANCZOS-downscales in PIL. This is MUCH sharper than feeding the SVG
+    straight to ffmpeg at the target size — ffmpeg rasterizes at the SVG's
+    intrinsic (tiny) size and then scales up, which produces blurry edges.
+    Always use this version, not the naive ffmpeg one-shot.
+    """
     key = (name, size, color)
     if key in _icon_cache:
         return _icon_cache[key]
@@ -217,14 +242,28 @@ def load_icon(name, size=96, color=WHITE):
         _icon_cache[key] = img
         return img
 
+    # Supersample @ 4x target size at 1024 dpi, then LANCZOS down → crisp edges
+    ss = max(256, size * 4)
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "error",
-        "-i", svg_path,
-        "-vf", f"scale={size}:{size}",
-        "-f", "image2pipe", "-vcodec", "png", "-"
+        "magick",
+        "-background", "none",
+        "-density", "1024",
+        svg_path,
+        "-resize", f"{ss}x{ss}",
+        "png:-",
     ]
     result = subprocess.run(cmd, capture_output=True)
-    img = Image.open(BytesIO(result.stdout)).convert("RGBA")
+    if result.returncode != 0 or not result.stdout:
+        # Fallback: ffmpeg high-density raster (still better than one-shot scale)
+        cmd2 = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", svg_path,
+            "-vf", f"scale={ss}:{ss}:flags=lanczos",
+            "-f", "image2pipe", "-vcodec", "png", "-",
+        ]
+        result = subprocess.run(cmd2, capture_output=True)
+    img_hi = Image.open(BytesIO(result.stdout)).convert("RGBA")
+    img = img_hi.resize((size, size), Image.LANCZOS)
 
     pixels = img.load()
     for y in range(img.height):
@@ -238,6 +277,12 @@ def load_icon(name, size=96, color=WHITE):
 ```
 
 **Rules:** Don't guess names — list the directory. Cache icons. Sizes: 36-48px inline, 64-80px cards, 96-180px hero.
+
+**Required dependency:** `ImageMagick` (`magick` CLI). Install:
+- Fedora: `sudo dnf install ImageMagick`
+- Ubuntu: `sudo apt install imagemagick`
+
+Without `magick`, icons fall back to ffmpeg supersampling (still supersampled — not a one-shot scale). **Never** use the old `ffmpeg -vf scale={size}:{size}` one-shot pattern: it rasterizes at the SVG's intrinsic size (often 24×24) and upscales, producing visibly blurry icons. The supersampled path is mandatory for quality output.
 
 ## Animation System
 
@@ -963,6 +1008,99 @@ When generating videos in Japanese, Chinese, Korean, Arabic, or other non-Latin 
 - Pill and tag vertical centering is **especially prone to bugs** with CJK fonts due to
   different ascent/descent metrics — always use `textbbox`-based centering
 - Test with preview before full render — never assume Latin-tested layouts work for CJK
+## PDF + PNG Export (Default Artifacts)
+
+Every generated script MUST produce PNG slide stills and a combined PDF deck alongside the
+MP4 video. These are first-class default artifacts — not optional extras — because users
+frequently need the slides as a printable/sharable deck in addition to the video.
+
+### Output paths (declare at top of script)
+
+```python
+SCRIPT_DIR       = os.path.dirname(os.path.abspath(__file__))
+OUTPUT           = os.path.join(SCRIPT_DIR, "presentation.mp4")
+OUTPUT_NARRATED  = os.path.join(SCRIPT_DIR, "presentation_narrated.mp4")
+OUTPUT_PDF       = os.path.join(SCRIPT_DIR, "presentation.pdf")
+OUTPUT_PNG_DIR   = os.path.join(SCRIPT_DIR, "slides_png")
+```
+
+### Render a settled still for each slide
+
+For PDF/PNG output, render each slide at ~85% through its duration so staggered reveals have
+settled and nothing is mid-animation. Never use frame 0 — it is pre-animation. Never use the
+final frame — it may be mid-crossfade in some designs.
+
+```python
+def render_still_for_slide(slide_func, duration_seconds):
+    """Render a single settled frame ~85% through the slide."""
+    total_frames = int(duration_seconds * FPS)
+    settled_frame = int(total_frames * 0.85)
+    return slide_func(settled_frame, total_frames)
+```
+
+### PNG + PDF export function
+
+```python
+def render_pdf():
+    """Render PNG stills for each slide and combine them into a single PDF."""
+    os.makedirs(OUTPUT_PNG_DIR, exist_ok=True)
+    print(f"Rendering {len(slides)} slide stills...")
+
+    stills = []
+    for i, slide_entry in enumerate(slides):
+        slide_func = slide_entry[0]
+        duration   = slide_entry[2]  # (func, narration, duration[, asset])
+
+        img = render_still_for_slide(slide_func, duration)
+        # Strip any alpha — PDF requires RGB
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        name = slide_func.__name__.replace("slide_", "")
+        png_path = os.path.join(OUTPUT_PNG_DIR, f"slide_{i+1:02d}_{name}.png")
+        img.save(png_path, "PNG", optimize=True)
+        stills.append(img)
+        print(f"  [{i+1:02d}/{len(slides)}] {png_path}")
+
+    # Combine into a single PDF
+    if stills:
+        stills[0].save(
+            OUTPUT_PDF, "PDF",
+            save_all=True,
+            append_images=stills[1:],
+            resolution=150.0,
+        )
+        print(f"PDF written: {OUTPUT_PDF}")
+```
+
+### CLI wiring
+
+The generated script must accept these modes, with `all` as the default:
+
+```python
+if __name__ == "__main__":
+    mode = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if mode == "video":
+        render_video()
+    elif mode == "narrated":
+        render_narrated()      # video + music + narration, muxed
+    elif mode == "pdf":
+        render_pdf()           # PNGs + combined PDF
+    elif mode == "all":
+        render_video()
+        render_narrated()
+        render_pdf()
+    else:
+        print(f"Unknown mode: {mode}. Use one of: video | narrated | pdf | all")
+        sys.exit(1)
+```
+
+### When to skip
+
+- **User explicitly opts out** ("just the mp4", "no pdf", "skip the pngs") — respect it,
+  but still mention in the summary that PDF/PNGs are available via `python make_video.py pdf`.
+- **Silent video** (no narration requested) — still produce PDF + PNGs. They are independent
+  of narration.
 
 ## Quality Checklist
 
@@ -982,6 +1120,7 @@ When generating videos in Japanese, Chinese, Korean, Arabic, or other non-Latin 
 - [ ] Glow position varies between slides
 - [ ] Callout boxes sized to content
 - [ ] Icons are cached and filenames verified (don't guess)
+- [ ] Icons use supersampled `magick` path (crisp, not blurry)
 - [ ] Video is 1920x1080 at 30fps
 - [ ] Preview frames inspected — no layout, alignment, or readability issues
 
@@ -999,12 +1138,17 @@ When generating videos in Japanese, Chinese, Korean, Arabic, or other non-Latin 
 - [ ] Audio ducking: music volume reduces during narration
 - [ ] Narrative follows a clear story arc
 
+### Output Artifacts
+- [ ] PNG slide stills written to `slides_png/` (one per slide, settled frame)
+- [ ] Combined PDF deck written alongside the MP4
+- [ ] Script CLI supports `video | narrated | pdf | all` with `all` as default
+
 ## Common Pitfalls
 
 1. **Sliding text shows partial characters**: Use fade-in for body text
 2. **Icons overlap text**: Calculate text width first
 3. **Callout boxes too large**: Size to content
-4. **libx264 not available**: Use `libopenh264`
+4. **libx264 not available**: Fall back to `libopenh264` (detect or try/except at startup)
 5. **Icon names wrong**: List the directory, don't guess
 6. **Music too loud**: Use mood-appropriate volume (see Volume by Mood table)
 7. **Font not found**: Fall back to system default
@@ -1018,3 +1162,6 @@ When generating videos in Japanese, Chinese, Korean, Arabic, or other non-Latin 
 15. **Preview at wrong duration**: Always use `max(min_dur, 30)` for preview frame count — using `min_dur` alone produces previews at shorter durations than actual playback, which can mask timing-dependent layout issues
 16. **Using `font()` instead of `safe_font()`**: All content text must go through `safe_font()` to enforce the 20px minimum. Only use `font()` directly for decorative elements exempt from the minimum (e.g., tiny step numbers inside circles)
 17. **Not tracking elements for validation**: When adding custom layouts (diagrams, multi-column arrangements, flow charts), always call `track()` for each positioned element so `--validate` can detect overlaps automatically
+18. **Blurry icons**: Never use `ffmpeg -vf scale={size}:{size}` one-shot — always use the ImageMagick supersample path in `load_icon`
+19. **PDF missing or MP4-only delivery**: PNG + PDF are default artifacts. Run `all` mode by default; only skip on explicit user opt-out
+20. **PNG at frame 0 or last frame**: Render stills at ~85% through the slide so reveals have settled and no mid-crossfade artifact appears
