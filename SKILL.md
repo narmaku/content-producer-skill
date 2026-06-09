@@ -386,10 +386,29 @@ def draw_terminal(draw, img, x, y, w, h, lines, frame, start_delay):
 ```
 
 ### Tag Pills
+
+Use **20px minimum** for pill text. Always vertically center text using `textbbox` —
+never hardcode a y-offset, as it breaks with different fonts (especially CJK).
+
 ```python
-tw = text_width(draw, tag, f_tag) + 24
-draw.rounded_rectangle([x, y, x + tw, y + 30], radius=20, outline=GRAY_70, width=1)
-draw.text((x + 12, y + 5), tag, font=f_tag, fill=GRAY_40)
+def draw_pill(draw, x, y, text, ft, pill_h=36, pad_x=16,
+              outline=GRAY_70, fill_color=None, text_color=GRAY_40):
+    """Draw a pill with properly vertically-centered text."""
+    text_w = text_width(draw, text, ft)
+    pill_w = text_w + pad_x * 2
+    if fill_color:
+        draw.rounded_rectangle([x, y, x + pill_w, y + pill_h],
+                               radius=pill_h // 2, fill=fill_color)
+    else:
+        draw.rounded_rectangle([x, y, x + pill_w, y + pill_h],
+                               radius=pill_h // 2, outline=outline, width=1)
+    # Vertically center using textbbox (handles all font metrics correctly)
+    bb = draw.textbbox((0, 0), text, font=ft)
+    text_h = bb[3] - bb[1]
+    text_y_offset = bb[1]  # top bearing offset
+    text_y = y + (pill_h - text_h) // 2 - text_y_offset
+    draw.text((x + pad_x, text_y), text, font=ft, fill=text_color)
+    return pill_w
 ```
 
 ## Custom Branding
@@ -692,23 +711,289 @@ cmd = [
 ]
 ```
 
+## Quality Verification
+
+After generating the video script, **always verify quality before delivering the final
+video**. The skill provides two complementary verification modes:
+
+- `--validate` — **automated checks** that catch font size violations, element overlaps,
+  and out-of-bounds elements programmatically (fast, deterministic, catches most bugs)
+- `--preview` — **visual inspection** via rendered PNG frames that Claude reads as images
+  (catches aesthetic issues that code can't detect)
+
+**Always run `--validate` first**, then `--preview`. Automated checks eliminate entire
+categories of bugs before visual inspection even begins.
+
+### Layout Registry
+
+Every generated script must include a layout tracking system that records element
+bounding boxes per slide. This enables automated overlap detection and bounds checking.
+
+```python
+# ── Layout tracking ──────────────────────────────────────────────────
+_slide_elements = {}  # slide_name -> [(label, x, y, w, h), ...]
+
+def track(slide_name, label, x, y, w, h):
+    """Register an element's bounding box for validation."""
+    _slide_elements.setdefault(slide_name, []).append((label, x, y, w, h))
+
+def clear_tracking(slide_name):
+    """Clear tracked elements for a slide (call at start of each slide fn)."""
+    _slide_elements[slide_name] = []
+```
+
+Use `track()` after drawing any positioned element — cards, terminals, text blocks,
+info boxes, pill rows, diagrams:
+
+```python
+def slide_example(frame, total):
+    img = Image.new("RGB", (W, H), BLACK)
+    clear_tracking("slide_example")
+
+    # After drawing a card:
+    draw.rounded_rectangle([cx, cy, cx + cw, cy + ch], ...)
+    track("slide_example", "feature_card_1", cx, cy, cw, ch)
+
+    # After drawing a terminal:
+    th = terminal(draw, tx, ty, tw_val, lines, frame, sd)
+    track("slide_example", "terminal", tx, ty, tw_val, th)
+
+    # After drawing a text block with known bounds:
+    track("slide_example", "headline", 100, 110, text_w, 60)
+```
+
+**What to track**: Cards, terminals, info boxes, pill rows, diagram boxes, large text
+blocks, and any element group that could overlap with another. You do NOT need to track
+individual animation frames or the progress bar.
+
+### Font Size Enforcement
+
+Every generated script must use a `safe_font()` wrapper instead of calling `font()`
+directly for content text. This enforces the 20px minimum at render time:
+
+```python
+MIN_FONT_SIZE = 20
+
+def safe_font(name, size, label=""):
+    """Font wrapper that enforces minimum size for readability."""
+    if size < MIN_FONT_SIZE:
+        raise ValueError(
+            f"Font size {size}px below {MIN_FONT_SIZE}px minimum"
+            f"{f' for: {label}' if label else ''}"
+        )
+    return font(name, size)
+```
+
+**When to use `safe_font()` vs `font()`**:
+- `safe_font()` — all visible content text: body, labels, descriptions, pills, terminal
+  text, card titles, annotations, captions
+- `font()` — only for elements exempt from the minimum: slide numbers in small circles,
+  decorative elements that aren't meant to be read as text
+
+### Validate Mode
+
+Every generated script must include a `--validate` mode that runs **programmatic checks**
+without rendering the full video. Add this block in `main()`, before narration generation,
+after the `--preview` block:
+
+```python
+if "--validate" in sys.argv:
+    print("Running validation checks...")
+    errors = []
+    warnings = []
+
+    # Step 1: Render each slide at steady-state to populate layout tracking
+    for idx, (fn, narration, min_dur) in enumerate(slides_def):
+        total_f = int(max(min_dur, 30) * FPS)
+        fn(total_f - 1, total_f)
+
+    # Step 2: Check for element overlaps
+    for slide_name, elements in _slide_elements.items():
+        for i, (label_a, ax, ay, aw, ah) in enumerate(elements):
+            for j, (label_b, bx, by, bw, bh) in enumerate(elements):
+                if j <= i:
+                    continue
+                # Check rectangle overlap
+                if (ax < bx + bw and ax + aw > bx and
+                        ay < by + bh and ay + ah > by):
+                    errors.append(
+                        f"  OVERLAP in {slide_name}: "
+                        f"'{label_a}' ({ax},{ay},{aw}x{ah}) overlaps "
+                        f"'{label_b}' ({bx},{by},{bw}x{bh})"
+                    )
+
+    # Step 3: Check canvas bounds (1920x1080)
+    for slide_name, elements in _slide_elements.items():
+        for label, x, y, w, h in elements:
+            if x < 0 or y < 0 or x + w > W or y + h > H - 4:  # -4 for progress bar
+                errors.append(
+                    f"  OUT OF BOUNDS in {slide_name}: "
+                    f"'{label}' ({x},{y},{w}x{h}) exceeds canvas {W}x{H}"
+                )
+
+    # Step 4: Report
+    if errors:
+        print(f"\n{len(errors)} ERROR(S) FOUND:")
+        for e in errors:
+            print(e)
+    if warnings:
+        print(f"\n{len(warnings)} WARNING(S):")
+        for w in warnings:
+            print(w)
+    if not errors and not warnings:
+        print("  All checks passed.")
+    sys.exit(1 if errors else 0)
+```
+
+Font size violations are caught at render time by `safe_font()` — if a slide function
+uses a size below 20px, the script crashes with a clear error message during validation.
+
+### Preview Mode
+
+Every generated script must include a `--preview` mode. When invoked with `--preview`,
+the script renders one sample frame per slide and saves them as PNG files.
+
+**Critical**: Use `max(min_dur, 30)` for the frame count — NOT `min_dur` alone. During
+actual playback, narration stretches slides to 20-35 seconds. Using `min_dur` (often 7-10s)
+produces a preview at a different total frame count than the real render. While animations
+complete well within `min_dur`, the preview should match the actual viewing experience as
+closely as possible to avoid any discrepancy.
+
+```python
+if "--preview" in sys.argv:
+    print("Rendering preview frames...")
+    for idx, (fn, narration, min_dur) in enumerate(slides_def):
+        total_f = int(max(min_dur, 30) * FPS)
+        img = fn(total_f - 1, total_f)
+        path = f"/tmp/slide_preview_{idx+1:02d}_{fn.__name__}.png"
+        img.save(path)
+        print(f"  [{idx+1}] {path}")
+    print("Preview complete. Inspect frames before full render.")
+    sys.exit(0)
+```
+
+Add this block at the start of the `main()` function, before narration generation.
+
+### Inspection Workflow
+
+1. **Generate the script** as usual
+2. **Run `--validate` first**: `python3 make_video.py --validate`
+   - If errors are reported, fix them before proceeding
+   - Font size violations crash immediately with a clear message
+   - Overlap and bounds errors are listed with slide name, element labels, and coordinates
+3. **Run `--preview`**: `python3 make_video.py --preview`
+4. **Read each preview image** — Claude is multimodal — and inspect at three levels:
+
+#### Level 1: Layout & Bounds (macro view)
+- Text overflow, truncation, or clipping at slide edges
+- Overlapping elements (icons over text, cards over cards)
+- Elements placed outside the visible 1920x1080 canvas
+- Cards or terminals extending beyond slide margins
+- Misaligned connection lines, arrows, or flow diagram connectors
+- Missing or broken icons (blank spaces where icons should appear)
+
+**Most Level 1 issues should already be caught by `--validate`.** If you find one
+visually that validation missed, add tracking for that element so it's caught
+automatically next time.
+
+#### Level 2: Text Readability (critical — most common issue)
+- **Minimum text size**: No text in the video should be below **20px** at 1080p.
+  At 14-16px, text becomes blurry and unreadable when the video is viewed at
+  typical sizes (embedded players, mobile). Apply this rule strictly:
+  - Tag pills / labels: **20px minimum** (mono or regular)
+  - Card body text: **22px minimum** (regular)
+  - Card titles: **26px minimum** (bold)
+  - Pipeline/diagram box descriptions: **22px minimum**
+  - Data table rows (BPM, stats): **20px minimum**
+  - Terminal/code text: **20px minimum** (mono)
+  - Annotations, captions, footnotes: **22px minimum**
+  - Slide headlines: **48-64px** (bold)
+  - Hero titles: **72-96px** (bold)
+- **Stat labels** next to large callout numbers (e.g. "of web traffic is video"
+  under "82%"): use **28px minimum** so they read clearly alongside the big number
+- If any text appears small or hard to read in the preview image, increase its size
+
+**Most Level 2 issues should already be caught by `safe_font()`.** If a font size
+violation slips through, it means `font()` was used instead of `safe_font()` — fix
+the call site.
+
+#### Level 3: Component Quality (detail view)
+- **Pill / tag vertical centering**: Text inside rounded pill shapes must be
+  vertically centered. Hardcoding a y-offset (e.g. `y + 5`) breaks across fonts
+  because different fonts have different ascent/descent metrics. **Always use
+  `textbbox` to compute vertical centering**:
+  ```python
+  bb = draw.textbbox((0, 0), text, font=ft)
+  text_h = bb[3] - bb[1]
+  text_y_offset = bb[1]  # top bearing
+  text_y = pill_y + (pill_h - text_h) // 2 - text_y_offset
+  ```
+  This is especially critical for CJK fonts (Japanese, Chinese, Korean) which have
+  different metrics than Latin fonts. A pill that looks fine with Inter will have
+  misaligned text with Noto Sans CJK.
+- **Pill sizing**: The pill height should be `text_height + 12-16px` padding. Too
+  tall makes the text look lost; too short clips ascenders/descenders.
+- **Card internal spacing**: Ensure title, body, and tag pill don't overlap within
+  cards. Leave at least 8px between elements.
+- **Icon-to-text alignment**: Icons placed next to text should be vertically
+  aligned to the text's visual center, not its top.
+- **Consistent spacing**: Similar elements (card rows, list items, table rows)
+  should have uniform vertical gaps.
+- **Color contrast**: Text on colored backgrounds must have sufficient contrast.
+  WHITE on ACCENT is fine; GRAY_40 on GRAY_90 may be too subtle for small text.
+
+5. **Fix any issues** found in the slide functions
+6. **Re-validate and re-preview** the fixed slides to confirm the fix
+7. **Full render**: Once all checks pass, run the full video render
+
+### When to Skip Preview
+
+Preview can be skipped only if the video uses exclusively standard components (terminal
+mockups, info cards, tag pills) with no custom layouts like flow diagrams, multi-element
+arrangements, or connection lines. When in doubt, preview.
+
+**Never skip `--validate`** — it's fast and catches the most common bugs automatically.
+
+### Non-Latin Font Considerations
+
+When generating videos in Japanese, Chinese, Korean, Arabic, or other non-Latin scripts:
+- CJK fonts (Noto Sans CJK, etc.) use TTC (TrueType Collection) files — specify the
+  correct `index` parameter (e.g., `index=0` for JP, `index=1` for KR)
+- CJK characters are wider than Latin — leave extra horizontal space in cards and pills
+- Pill and tag vertical centering is **especially prone to bugs** with CJK fonts due to
+  different ascent/descent metrics — always use `textbbox`-based centering
+- Test with preview before full render — never assume Latin-tested layouts work for CJK
+
 ## Quality Checklist
 
+### Automated (enforced by `--validate` and `safe_font()`)
+- [ ] `--validate` passes with zero errors
+- [ ] **No text below 20px** — enforced by `safe_font()` at render time
+- [ ] **No overlapping elements** — enforced by layout registry overlap detection
+- [ ] **All elements within canvas bounds** — enforced by bounds checking
+- [ ] Script runs without `safe_font()` crashes
+
+### Visual (verified by `--preview` inspection)
 - [ ] All text uses configured fonts (graceful fallback if missing)
+- [ ] **Pill/tag text is vertically centered** — uses `textbbox`, not hardcoded y-offset
 - [ ] ACCENT color appears on every slide
 - [ ] Color palette is consistent throughout
 - [ ] Background is dark with ambient glow
 - [ ] Glow position varies between slides
+- [ ] Callout boxes sized to content
+- [ ] Icons are cached and filenames verified (don't guess)
+- [ ] Video is 1920x1080 at 30fps
+- [ ] Preview frames inspected — no layout, alignment, or readability issues
+
+### Animation & Transitions
 - [ ] Headlines tell a complete story in sequence
 - [ ] Body text fades in (not slides in)
 - [ ] All animations use eased timing, no linear motion
 - [ ] Staggered reveals have 0.5-1.5s delays
 - [ ] Crossfade transitions between all slides
 - [ ] Progress bar visible at bottom
-- [ ] Icon filenames verified (don't guess)
-- [ ] Icons are cached
-- [ ] Callout boxes sized to content
-- [ ] Video is 1920x1080 at 30fps
+
+### Audio
 - [ ] Background music included at mood-appropriate volume (see Volume by Mood table)
 - [ ] Voice narration included with narration text for every slide
 - [ ] Audio ducking: music volume reduces during narration
@@ -725,3 +1010,11 @@ cmd = [
 7. **Font not found**: Fall back to system default
 8. **Missing music or narration**: Both are included by default — only omit if user explicitly opts out
 9. **Wrong voice**: Check `brand/brand.md` for voice preference, then user request, then default to `af_heart`
+10. **Misaligned connectors in diagrams**: Always preview slides with flow diagrams or connection lines — route through a horizontal bus line for clean tree layouts
+11. **Skipping validation**: Always run `--validate` before `--preview` — it catches overlaps and font violations that visual inspection easily misses
+12. **Text too small in pills/tags**: Font sizes of 14-16px are unreadable at 1080p — use 20px minimum for all pill and tag text. Use `safe_font()` to enforce this automatically
+13. **Pill text not vertically centered**: Never hardcode `y + 5` offsets — use `textbbox` to compute proper centering. CJK fonts have different metrics than Latin fonts and will misalign with hardcoded offsets
+14. **Small description text in cards/boxes**: Pipeline boxes, info cards, and data tables need 22px minimum for descriptions — 18px is too small when viewed at typical video player sizes
+15. **Preview at wrong duration**: Always use `max(min_dur, 30)` for preview frame count — using `min_dur` alone produces previews at shorter durations than actual playback, which can mask timing-dependent layout issues
+16. **Using `font()` instead of `safe_font()`**: All content text must go through `safe_font()` to enforce the 20px minimum. Only use `font()` directly for decorative elements exempt from the minimum (e.g., tiny step numbers inside circles)
+17. **Not tracking elements for validation**: When adding custom layouts (diagrams, multi-column arrangements, flow charts), always call `track()` for each positioned element so `--validate` can detect overlaps automatically
